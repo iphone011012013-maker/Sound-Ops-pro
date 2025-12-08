@@ -123,7 +123,7 @@
             <div>
                 <h1 class="text-4xl font-black text-white mb-2 tracking-tight">Sound<span class="text-blue-500">Ops</span> Pro</h1>
                 <p class="text-slate-400 font-tajawal text-lg">منصة التحليل الصوتي والأمن السيبراني</p>
-                <div class="mt-2 text-xs text-slate-600 font-mono">V4.6 | Mahmoud Ibrahim Ed.</div>
+                <div class="mt-2 text-xs text-slate-600 font-mono">V4.7 | Mahmoud Ibrahim Ed.</div>
             </div>
 
             <div class="bg-slate-900/50 p-6 rounded-xl border border-white/5 text-right text-sm leading-relaxed text-slate-300">
@@ -813,6 +813,12 @@
                     document.getElementById('stt-status').innerText = "Listening...";
                     document.getElementById('stt-status').classList.add('bg-red-500/20', 'text-red-400');
                     document.getElementById('record-btn').classList.add('bg-red-600', 'text-white');
+
+                    // NEW: Suspend AudioContext (Visualizer & Hardware Monitor)
+                    if(audioCtx && audioCtx.state === 'running') {
+                        audioCtx.suspend();
+                        log('Mic monitor paused for AI Speech Recognition.', 'warn');
+                    }
                 };
 
                 recognition.onend = () => {
@@ -822,6 +828,12 @@
                         document.getElementById('stt-status').innerText = "Ready";
                         document.getElementById('stt-status').classList.remove('bg-red-500/20', 'text-red-400');
                         document.getElementById('record-btn').classList.remove('bg-red-600', 'text-white');
+
+                        // NEW: Resume AudioContext
+                        if(audioCtx && audioCtx.state === 'suspended') {
+                            audioCtx.resume();
+                            log('Mic monitor resumed.', 'success');
+                        }
                     }
                 };
 
@@ -890,4 +902,5 @@
     </script>
 </body>
 </html>
+
 
