@@ -738,3 +738,452 @@
 </body>
 </html>
 
+
+
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AboElfadl | Sentinel V5.0</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #00ff41; 
+            --alert: #ff0000;
+            --warning: #ffcc00;
+            --info: #00ccff;
+            --bg: #050505;
+        }
+
+        * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            background-color: var(--bg);
+            color: var(--primary);
+            font-family: 'Share Tech Mono', monospace;
+            overflow: hidden;
+            height: 100vh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Camera View --- */
+        #scanner-view {
+            position: relative;
+            flex-grow: 1;
+            overflow: hidden;
+            background: #000;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(1);
+        }
+
+        /* --- HUD --- */
+        .hud-layer {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none; z-index: 10;
+        }
+
+        .scan-line {
+            position: absolute; top: 0; width: 100%; height: 2px;
+            background: rgba(0, 255, 65, 0.6);
+            box-shadow: 0 0 10px var(--primary);
+            animation: scan 3s linear infinite;
+            display: none;
+        }
+        @keyframes scan { 0% {top:0; opacity:0;} 50% {opacity:1;} 100% {top:100%; opacity:0;} }
+
+        .top-bar {
+            position: absolute; top: 0; width: 100%; padding: 10px;
+            background: linear-gradient(to bottom, #000, transparent);
+            display: flex; justify-content: space-between;
+            font-size: 12px; text-shadow: 0 0 5px var(--primary);
+            z-index: 20;
+        }
+
+        /* Alert Overlay */
+        #alert-overlay {
+            display: none;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 0, 0, 0.3);
+            z-index: 15;
+            flex-direction: column;
+            align-items: center; justify-content: center;
+            animation: pulse-red 0.5s infinite;
+        }
+        #alert-msg {
+            background: #000; color: #fff; padding: 20px; border: 2px solid var(--alert);
+            font-size: 20px; font-weight: bold; text-align: center;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: inset 0 0 0px var(--alert); }
+            50% { box-shadow: inset 0 0 50px var(--alert); }
+            100% { box-shadow: inset 0 0 0px var(--alert); }
+        }
+
+        /* --- Controls --- */
+        .controls {
+            background: #000; padding: 10px;
+            border-top: 1px solid var(--primary); z-index: 20;
+        }
+
+        /* 2x2 Grid for Main Security Features */
+        .grid-menu {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .btn {
+            background: rgba(0, 50, 0, 0.2); border: 1px solid var(--primary);
+            color: var(--primary); padding: 12px 5px;
+            font-family: inherit; font-size: 12px; cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 5px;
+            transition: 0.2s; border-radius: 4px;
+        }
+        .btn svg { width: 24px; height: 24px; fill: currentColor; }
+        .btn:active { transform: scale(0.98); }
+        .btn.active { background: var(--primary); color: #000; box-shadow: 0 0 10px var(--primary); }
+        
+        .btn.danger { border-color: var(--alert); color: var(--alert); }
+        .btn.danger.active { background: var(--alert); color: #fff; box-shadow: 0 0 15px var(--alert); }
+        
+        .btn.warning { border-color: var(--warning); color: var(--warning); }
+        .btn.warning.active { background: var(--warning); color: #000; box-shadow: 0 0 15px var(--warning); }
+
+        .btn.info { border-color: var(--info); color: var(--info); }
+        .btn.info.active { background: var(--info); color: #000; box-shadow: 0 0 15px var(--info); }
+
+        /* Bottom Utils Bar */
+        .utils-bar {
+            display: flex; gap: 8px; justify-content: center;
+        }
+        .btn-small {
+            flex: 1; padding: 8px; font-size: 10px; border: 1px solid #444; color: #888;
+            background: #111; display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .btn-small.active { color: var(--warning); border-color: var(--warning); }
+
+        /* Upload Status */
+        #upload-status {
+            position: absolute; bottom: 140px; right: 10px;
+            font-size: 10px; color: var(--warning);
+            background: rgba(0,0,0,0.9); padding: 5px; border: 1px solid var(--warning);
+            display: none;
+        }
+
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="scanner-view">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="procCanvas"></canvas> <!-- المعالجة -->
+        <canvas id="snapCanvas"></canvas> <!-- التقاط الصور -->
+
+        <div class="hud-layer">
+            <div class="scan-line" id="scanLine"></div>
+            <div class="top-bar">
+                <div>ABOELFADL SENTINEL v5.0</div>
+                <div id="sys-status">STANDBY</div>
+            </div>
+            
+            <div id="alert-overlay">
+                <div id="alert-msg">
+                    <span id="alert-title">⚠ ALARM TRIGGERED ⚠</span><br>
+                    <span style="font-size:12px; font-weight:normal; color:#ccc;">UPLOADING EVIDENCE...</span>
+                </div>
+            </div>
+            
+            <div id="upload-status">UPLOADING TO TELEGRAM...</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <!-- Main Security Grid -->
+        <div class="grid-menu">
+            <!-- 1. Lens Detect -->
+            <button class="btn danger" id="btnLens" onclick="toggleMode('lens')">
+                <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                LENS DETECT
+            </button>
+
+            <!-- 2. Motion Sentry -->
+            <button class="btn warning" id="btnMotion" onclick="toggleMode('motion')">
+                <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                MOTION SENTRY
+            </button>
+
+            <!-- 3. Light/IR Guard (NEW) -->
+            <button class="btn info" id="btnLight" onclick="toggleMode('light')">
+                <svg viewBox="0 0 24 24"><path d="M6.76 4.84l-1.8-1.79-1.41 1.41 1.79 1.79 1.42-1.41zM4 10.5H1v2h3v-2zm9-9.95h-2V3.5h2V.55zm7.45 3.91l-1.41-1.41-1.79 1.79 1.41 1.41 1.79-1.79zm-3.21 13.7l1.79 1.79 1.41-1.41-1.79-1.79-1.41 1.41zM20 10.5v2h3v-2h-3zm-8-5c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm-1 16.95h2V22h-2v-3.55zm-5.24-3.26l1.41 1.41 1.79-1.79-1.41-1.41-1.79 1.79z"/></svg>
+                LIGHT/IR GUARD
+            </button>
+
+            <!-- 4. Panic -->
+            <button class="btn" onclick="manualPanic()">
+                <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+                PANIC SEND
+            </button>
+        </div>
+
+        <!-- Utility Bar -->
+        <div class="utils-bar">
+            <button class="btn-small" id="btnFlash" onclick="toggleFlash()">⚡ TORCH</button>
+            <button class="btn-small" onclick="switchCamera()">📷 FLIP CAM</button>
+        </div>
+        
+        <div style="font-size:9px; text-align:center; color:#444; margin-top:5px;">
+            SECURE LINK ACTIVE
+        </div>
+    </div>
+
+    <script>
+        // --- Telegram Config ---
+        const BOT_TOKEN = '8408417562:AAGbJ1VuFQ7nzTQhrTl72Atv5tkBmyFJWlU';
+        const CHAT_ID = '1431886140';
+
+        // --- Variables ---
+        const video = document.getElementById('video');
+        const sysStatus = document.getElementById('sys-status');
+        const alertOverlay = document.getElementById('alert-overlay');
+        const alertTitle = document.getElementById('alert-title');
+        const uploadStatus = document.getElementById('upload-status');
+        const scanLine = document.getElementById('scanLine');
+        
+        let stream;
+        let track;
+        let activeMode = null; // 'lens', 'motion', 'light'
+        let processingInterval;
+        let lastFrameData = null;
+        let audioCtx = null;
+        let isUploading = false;
+        let isFlashOn = false;
+        let facingMode = 'environment';
+
+        // 1. Initialize
+        async function initCamera() {
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: facingMode, width: {ideal: 1280}, height: {ideal: 720} } 
+                });
+                video.srcObject = stream;
+                track = stream.getVideoTracks()[0];
+            } catch (e) {
+                alert("Camera Access Required!");
+            }
+        }
+
+        // 2. Mode Handler
+        function toggleMode(mode) {
+            // Stop current mode
+            if (activeMode === mode) {
+                resetAll();
+                return;
+            }
+            resetAll();
+            activeMode = mode;
+
+            // Audio Context Init (User Interaction Requirement)
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            if (mode === 'lens') {
+                document.getElementById('btnLens').classList.add('active');
+                video.style.filter = 'grayscale(100%) contrast(300%) brightness(1.2) sepia(100%) hue-rotate(-50deg) saturate(600%)';
+                sysStatus.innerText = "LENS HUNTER ACTIVE";
+                sysStatus.style.color = "var(--alert)";
+            } 
+            else if (mode === 'motion') {
+                document.getElementById('btnMotion').classList.add('active');
+                scanLine.style.display = 'block';
+                sysStatus.innerText = "MOTION SENTRY: ARMED";
+                sysStatus.style.color = "var(--warning)";
+                startProcessing('motion');
+            } 
+            else if (mode === 'light') {
+                document.getElementById('btnLight').classList.add('active');
+                scanLine.style.display = 'block';
+                // Blue Scan Line for Light Mode
+                scanLine.style.boxShadow = "0 0 10px var(--info)";
+                scanLine.style.background = "rgba(0, 200, 255, 0.6)";
+                sysStatus.innerText = "LIGHT/IR GUARD: ARMED";
+                sysStatus.style.color = "var(--info)";
+                startProcessing('light');
+            }
+        }
+
+        function resetAll() {
+            activeMode = null;
+            video.style.filter = 'none';
+            scanLine.style.display = 'none';
+            scanLine.style.boxShadow = "0 0 10px var(--primary)";
+            scanLine.style.background = "rgba(0, 255, 65, 0.6)";
+            
+            clearInterval(processingInterval);
+            lastFrameData = null;
+            
+            document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+            sysStatus.innerText = "STANDBY";
+            sysStatus.style.color = "var(--primary)";
+            
+            alertOverlay.style.display = 'none';
+        }
+
+        // 3. Processing Logic (The Brain)
+        function startProcessing(type) {
+            const cvs = document.getElementById('procCanvas');
+            const ctx = cvs.getContext('2d');
+            cvs.width = 64; cvs.height = 64; // Low res for speed
+
+            processingInterval = setInterval(() => {
+                if (isUploading) return;
+
+                ctx.drawImage(video, 0, 0, 64, 64);
+                const frame = ctx.getImageData(0, 0, 64, 64);
+                const data = frame.data;
+
+                if (type === 'motion') {
+                    detectMotion(data);
+                } else if (type === 'light') {
+                    detectLight(data);
+                }
+
+                lastFrameData = data;
+            }, 500);
+        }
+
+        // A. Motion Detection Algorithm
+        function detectMotion(data) {
+            if (!lastFrameData) return;
+            let diff = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                diff += Math.abs(data[i] - lastFrameData[i]); // Check RGB diff
+            }
+            if (diff > 40000) { // Threshold
+                triggerAlarm("MOTION DETECTED");
+            }
+        }
+
+        // B. Light/IR Detection Algorithm (High Luminance)
+        function detectLight(data) {
+            let brightPixels = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+                
+                // Calculate Luminance
+                // IR often appears as bright white/purple
+                if (r > 240 && g > 240 && b > 240) { // Pure White (Light source)
+                    brightPixels++;
+                } else if (r > 200 && b > 200 && g < 150) { // Violet/Pink (IR typical)
+                    brightPixels++;
+                }
+            }
+            
+            // If significant bright spot detected (e.g. > 10 pixels in low res grid)
+            if (brightPixels > 5) {
+                triggerAlarm("LIGHT/IR DETECTED");
+            }
+        }
+
+        // 4. Alarm System
+        function triggerAlarm(reason) {
+            if (isUploading) return;
+            
+            playSiren();
+            alertOverlay.style.display = 'flex';
+            alertTitle.innerText = `⚠ ${reason} ⚠`;
+            
+            // Capture Evidence
+            captureAndSend(reason);
+        }
+
+        function playSiren() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(900, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.6);
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.6);
+        }
+
+        // 5. Telegram Integration
+        function captureAndSend(reason) {
+            isUploading = true;
+            uploadStatus.style.display = 'block';
+
+            const snapCvs = document.getElementById('snapCanvas');
+            snapCvs.width = video.videoWidth;
+            snapCvs.height = video.videoHeight;
+            snapCvs.getContext('2d').drawImage(video, 0, 0);
+
+            snapCvs.toBlob(blob => {
+                const formData = new FormData();
+                formData.append('chat_id', CHAT_ID);
+                formData.append('photo', blob, 'evidence.jpg');
+                formData.append('caption', `🚨 ALERT: ${reason}\nSystem: AboElfadl Sentinel V5.0`);
+
+                fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                    method: 'POST', body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    uploadStatus.innerText = "SENT TO HQ ✔";
+                    setTimeout(() => {
+                        isUploading = false;
+                        uploadStatus.style.display = 'none';
+                        alertOverlay.style.display = 'none';
+                        // Keep monitoring if mode is still active
+                        uploadStatus.innerText = "UPLOADING...";
+                    }, 3000);
+                })
+                .catch(err => {
+                    console.error(err);
+                    isUploading = false;
+                    uploadStatus.innerText = "FAILED ❌";
+                });
+            }, 'image/jpeg', 0.8);
+        }
+
+        function manualPanic() {
+            triggerAlarm("PANIC BUTTON");
+        }
+
+        // 6. Utilities
+        function toggleFlash() {
+            if (!track) return;
+            isFlashOn = !isFlashOn;
+            track.applyConstraints({ advanced: [{ torch: isFlashOn }] })
+            .then(() => document.getElementById('btnFlash').classList.toggle('active', isFlashOn))
+            .catch(() => alert("Flash not supported"));
+        }
+
+        function switchCamera() {
+            facingMode = facingMode === 'user' ? 'environment' : 'user';
+            initCamera();
+        }
+
+        initCamera();
+
+    </script>
+</body>
+</html>
+
+
