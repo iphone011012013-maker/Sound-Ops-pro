@@ -123,7 +123,7 @@
             <div>
                 <h1 class="text-4xl font-black text-white mb-2 tracking-tight">Sound<span class="text-blue-500">Ops</span> Pro</h1>
                 <p class="text-slate-400 font-tajawal text-lg">منصة التحليل الصوتي والأمن السيبراني</p>
-                <div class="mt-2 text-xs text-slate-600 font-mono">V4.5 | Mahmoud Ibrahim Ed.</div>
+                <div class="mt-2 text-xs text-slate-600 font-mono">V4.6 | Mahmoud Ibrahim Ed.</div>
             </div>
 
             <div class="bg-slate-900/50 p-6 rounded-xl border border-white/5 text-right text-sm leading-relaxed text-slate-300">
@@ -359,6 +359,7 @@
                     <span id="stt-status" class="text-[10px] px-2 py-1 rounded bg-slate-800 text-slate-400 border border-slate-700">Ready</span>
                 </div>
 
+                <!-- Text Area for STT -->
                 <textarea id="speech-result" rows="8" class="w-full bg-black/40 text-slate-100 p-4 rounded-xl border border-white/10 focus:border-red-500/50 outline-none resize-none text-sm leading-relaxed placeholder-slate-700 mb-4 transition-colors" placeholder="اضغط زر الميكروفون وتحدث..."></textarea>
                 
                 <div class="flex items-center justify-between">
@@ -791,56 +792,76 @@
             document.getElementById('btnRecStart').innerHTML = `<i class="fa-solid fa-microphone"></i> تسجيل`;
         });
 
-        // --- AI: STT & TTS ---
+        // --- AI: STT (Logic Borrowed from 'learn_the_sound.html') ---
         let recognition;
-        let isRec = false;
-        
+        let isSTTRec = false;
+
         function initSTT() {
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 recognition = new SpeechRecognition();
                 recognition.lang = 'ar-EG';
-                recognition.continuous = true;
-                recognition.interimResults = true;
+                
+                // === THE KEY FIX ===
+                // Setting interimResults to false means we ONLY get the final, processed string.
+                // Setting continuous to false means we restart manually, preventing buffer duplication.
+                recognition.interimResults = false;
+                recognition.continuous = false; 
 
                 recognition.onstart = () => {
-                    isRec = true;
+                    isSTTRec = true;
                     document.getElementById('stt-status').innerText = "Listening...";
                     document.getElementById('stt-status').classList.add('bg-red-500/20', 'text-red-400');
                     document.getElementById('record-btn').classList.add('bg-red-600', 'text-white');
                 };
 
                 recognition.onend = () => {
-                    isRec = false;
-                    document.getElementById('stt-status').innerText = "Ready";
-                    document.getElementById('stt-status').classList.remove('bg-red-500/20', 'text-red-400');
-                    document.getElementById('record-btn').classList.remove('bg-red-600', 'text-white');
+                    if (isSTTRec) {
+                        recognition.start(); // Auto-restart loop
+                    } else {
+                        document.getElementById('stt-status').innerText = "Ready";
+                        document.getElementById('stt-status').classList.remove('bg-red-500/20', 'text-red-400');
+                        document.getElementById('record-btn').classList.remove('bg-red-600', 'text-white');
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    if (event.error !== 'no-speech' && event.error !== 'audio-capture') {
+                        isSTTRec = false; // Stop on real errors
+                    }
                 };
 
                 recognition.onresult = (event) => {
-                    let final = "";
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                            final += event.results[i][0].transcript;
-                        }
-                    }
-                    if(final) {
-                        const textarea = document.getElementById('speech-result');
-                        textarea.value += final + " ";
-                        textarea.scrollTop = textarea.scrollHeight;
-                    }
+                    // Since continuous=false, the result is always at index 0
+                    const transcript = event.results[0][0].transcript;
+                    const textarea = document.getElementById('speech-result');
+                    
+                    // Simple append logic
+                    textarea.value = (textarea.value + ' ' + transcript).trim();
+                    textarea.scrollTop = textarea.scrollHeight;
                 };
+
+                recognition.start();
+
             } else {
                 alert("Browser not supported for STT");
             }
         }
 
         function toggleSTT() {
-            if (!recognition) initSTT();
-            if (isRec) recognition.stop();
-            else recognition.start();
+            if (!recognition) {
+                initSTT();
+            } else {
+                if (isSTTRec) {
+                    isSTTRec = false;
+                    recognition.stop();
+                } else {
+                    recognition.start();
+                }
+            }
         }
 
+        // --- AI: TTS ---
         function speakText() {
             const text = document.getElementById('tts-input').value;
             if(!text) return;
